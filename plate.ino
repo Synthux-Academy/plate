@@ -129,7 +129,7 @@ void loop() {
 
   auto chorus_val = chorus_fader.Process();
   chorus.SetLfoFreq(chorus_val);
-  chorus.SetLfoDepth(1 - chorus_val);
+  chorus.SetLfoDepth(1.f - chorus_val);
   chorus.SetDelay(1.f - fmap(chorus_val, 0.1, 0.9));
   chorusMix = chorus_mix_fader.Process();
 
