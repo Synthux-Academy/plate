@@ -117,16 +117,6 @@ void loop() {
   inputGain = fmap(input_knob.Process(), 0.2, 10.0, Mapping::EXP);
   delayWetMix = wet_knob.Process();
   delay_line.SetDelay(fmap(delay_knob.Process(), 480, 96000));
-
-  //Examine whether particular pad (3 in this case) is being touched
-  // auto is_pad_touched = touch.IsTouched(3); //0...11
-
-  //Process knob values 
-  // auto knob_a_value = analogRead(knob_a);
-
-  //Process switch values
-  //The value of digitalRead is inverted
-  // auto switch_a_value = digitalRead(switch_1_a);
   
   delay(4);
 }
