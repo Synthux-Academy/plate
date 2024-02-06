@@ -4,12 +4,14 @@
 #include "simple-touch-daisy.h"
 #include "aknob.h"
 #include "vox.h"
+#include "follow.h"
 
 using namespace synthux;
 
 //////////////////////////////////////////////////////////////
 ///////////////////////// MODULES ////////////////////////////
 static Vox vox;
+static Follower follow(0.4, 0.999);
 
 //////////////////////////////////////////////////////////////
 ////////////////////// KNOBS & SWITCHES //////////////////////
@@ -24,7 +26,7 @@ static AKnob right_fader(A(S37));
 static const int drone_switch = D(S07);
 static const int switch_1_b = D(S08);
 static const int switch_2_a = D(S09);
-static const int switch_2_b = D(S10);
+static const int follow_switch = D(S10);
 
 //////////////////////////////////////////////////////////////
 /////////////////////////// TOUCH  ///////////////////////////
@@ -51,6 +53,7 @@ float delayWetMix = 0.33; // 0...1
 ///////////////////// AUDIO CALLBACK //////////////////////////
 
 float inputGain = 1.f;
+bool feedbackOn = false;
 
 void AudioCallback(float **in, float **out, size_t size) {
   float oscout = 0;
@@ -59,12 +62,15 @@ void AudioCallback(float **in, float **out, size_t size) {
     oscout = vox.Process();
 
     // Delay ##################################
-    float dry = in[0][i];
+    float dry = in[0][i] * inputGain;
     float wet = delay_line.Read();
     delay_line.Write((wet * delayFeedback) + dry);
     delayout = wet * delayWetMix + dry * (1 - delayWetMix);
+    if (feedbackOn) {
+      oscout *= follow.Process(delayout);
+    }
     out[0][i] = oscout;
-    out[1][i] = delayout * inputGain;
+    out[1][i] = delayout;
   }
 }
 
@@ -86,7 +92,7 @@ void setup() {
   pinMode(drone_switch, INPUT_PULLUP);
   pinMode(switch_1_b, INPUT_PULLUP);
   pinMode(switch_2_a, INPUT_PULLUP);
-  pinMode(switch_2_b, INPUT_PULLUP);
+  pinMode(follow_switch, INPUT_PULLUP);
 
   // initialize other modules here
   vox.Init(sample_rate);
@@ -100,7 +106,11 @@ void loop() {
   //PROCESS TOUCH SENSOR
   touch.Process();
 
-  vox.SetDroning(digitalRead(drone_switch));
+  auto newFeedbackOn = !digitalRead(follow_switch);
+  if (!feedbackOn && newFeedbackOn) vox.Trigger(decay);
+  feedbackOn = newFeedbackOn;
+  
+  vox.SetDroning(feedbackOn || digitalRead(drone_switch));
   vox.SetFreq(fmap(freq_knob.Process(), 30.0, 5000, Mapping::LOG));
   decay = fmap(decay_knob.Process(), 0.01, 3.0);
 
