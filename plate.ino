@@ -11,8 +11,8 @@ using namespace synthux;
 ///////////////////////// MODULES ////////////////////////////
 static Vox vox;
 
-////////////////////////////////////////////////////////////
-///////////////////// KNOBS & SWITCHES /////////////////////
+//////////////////////////////////////////////////////////////
+////////////////////// KNOBS & SWITCHES //////////////////////
 static AKnob input_knob(A(S30));
 static AKnob decay_knob(A(S32));
 static AKnob freq_knob(A(S33));
@@ -26,12 +26,11 @@ static const int switch_1_b = D(S08);
 static const int switch_2_a = D(S09);
 static const int switch_2_b = D(S10);
 
-////////////////////////////////////////////////////////////
-////////////////////////// TOUCH  //////////////////////////
+//////////////////////////////////////////////////////////////
+/////////////////////////// TOUCH  ///////////////////////////
 static synthux::simpletouch::Touch touch;
 
 float amp = 1.0;
-float freq = 100.f;
 float decay = 1.f;
 
 void OnTouch(uint16_t pad) {
@@ -43,13 +42,29 @@ void OnRelease(uint16_t pad) {
 }
 
 ///////////////////////////////////////////////////////////////
+////////////////////// DELAY LINE /////////////////////////////
+const int kDelayBufferLength = 96000; //2s @ 48KHz sample rate. delayLeftTime and kDelayRightTime can not be longer than this.
+DelayLine<float, kDelayBufferLength> delay_line;
+
+float delayTime = 12000; //250ms @ 48KHz sample rate. Should not be longer than kDelayBufferLength
+float delayFeedback = 0.8; // 0...1
+float delayWetMix = 0.33; // 0...1
+
+///////////////////////////////////////////////////////////////
 ///////////////////// AUDIO CALLBACK //////////////////////////
 void AudioCallback(float **in, float **out, size_t size) {
-  float oscout;
+  float oscout = 0;
+  float delayout = 0;
   for (size_t i = 0; i < size; i++) {
-    oscout = vox.Process();    
+    oscout = vox.Process();
+
+    // Delay ##################################
+    float dry = in[0][i];
+    float wet = delay_line.Read();
+    delay_line.Write((wet * delayFeedback) + dry);
+    delayout = wet * delayWetMix + dry * (1 - delayWetMix);
     out[0][i] = oscout;
-    out[1][i] = oscout;
+    out[1][i] = delayout;
   }
 }
 
@@ -59,6 +74,7 @@ void setup() {
   // SETUP DAISY
   DAISY.init(DAISY_SEED, AUDIO_SR_48K);
   auto sample_rate = DAISY.get_samplerate();
+  
   Serial.begin(9600);
 
   // INIT TOUCH SENSOR
@@ -74,6 +90,8 @@ void setup() {
 
   // initialize other modules here
   vox.Init(sample_rate);
+  delay_line.Init();
+  delay_line.SetDelay(delayTime);
 
   // BEGIN CALLBACK
   DAISY.begin(AudioCallback);
