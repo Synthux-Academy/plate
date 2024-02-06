@@ -3,81 +3,75 @@
 
 #include "simple-touch-daisy.h"
 #include "aknob.h"
-// #include "vox.h"
-#include "follow.h"
 #include "filter.h"
 
 using namespace synthux;
 
 //////////////////////////////////////////////////////////////
-///////////////////////// MODULES ////////////////////////////
-// static Vox vox;
-static Chorus chorus;
-static Follower follow(0.4, 0.999);
-static Filter filter;
+////////////////////// PARAMETERS ////////////////////////////
+const float delay_feedback = 0.7;       // 0...1
+const float filter_low_freq = 80.0;     // Hz
+const float filter_high_freq = 4000.0;  // Hz
+const float compressor_ratio = 10.0;     // 1...40
+const float compressor_attack = 0.005;  // 0.001...10 
+const float compressor_release = 0.1;   // 0.001...10
 
 //////////////////////////////////////////////////////////////
 ////////////////////// KNOBS & SWITCHES //////////////////////
-static AKnob input_knob(A(S30));
-static AKnob cutoff_knob(A(S32));
-static AKnob reso_knob(A(S33));
-static AKnob delay_knob(A(S34));
-static AKnob wet_knob(A(S35));
-static AKnob chorus_fader(A(S36));
-static AKnob chorus_mix_fader(A(S37));
+//
+//    |-| (*)   (*)   (*)    (*) |-|
+//    | | S31   S32   S33    S34 | |
+//    |||                        |||
+//    |_| (*)                (*) |_|
+//    S36 S30                S35 S37
 
-static const int drone_switch = D(S07);
-static const int switch_1_b = D(S08);
-static const int switch_2_a = D(S09);
-static const int follow_switch = D(S10);
+static AKnob cutoff_knob(A(S30));
+static AKnob reso_knob(A(S31));
+static AKnob tresh_knob(A(S32));
+static AKnob time_knob(A(S34));
+static AKnob wet_knob(A(S35));
+static AKnob input_fader(A(S36));
+static AKnob gain_fader(A(S37));
 
 //////////////////////////////////////////////////////////////
 /////////////////////////// TOUCH  ///////////////////////////
-static synthux::simpletouch::Touch touch;
+// static synthux::simpletouch::Touch touch;
+// void OnTouch(uint16_t pad) {}
+// void OnRelease(uint16_t pad) {}
 
-float decay = 1.f;
+//////////////////////////////////////////////////////////////
+///////////////////////// MODULES ////////////////////////////
+static Compressor comp;
+static Filter filter;
 
-void OnTouch(uint16_t pad) {
-  // if (pad == 4) vox.Trigger(decay);
-}
-
-void OnRelease(uint16_t pad) {
-
-}
-
-///////////////////////////////////////////////////////////////
-////////////////////// DELAY LINE /////////////////////////////
 const int kDelayBufferLength = 96000; //2s @ 48KHz sample rate. delayLeftTime and kDelayRightTime can not be longer than this.
 DelayLine<float, kDelayBufferLength> delay_line;
-float delayFeedback = 0.7; // 0...1
-float delayWetMix = 0.33; // 0...1
+float delay_wet_mix;
 
 ///////////////////////////////////////////////////////////////
 ///////////////////// AUDIO CALLBACK //////////////////////////
 
-float inputGain = 1.f;
-float chorusMix = 1.f;
-bool feedbackOn = false;
+float in_gain = 1.f;
+float wet, dry, output;
 
 void AudioCallback(float **in, float **out, size_t size) {
-  float oscout = 0;
-  float delayout = 0;
   for (size_t i = 0; i < size; i++) {
-    // oscout = vox.Process();
+    // Input ##################################
+    dry = in[0][i] * in_gain;
 
-    // Delay ##################################
-    float dry = in[0][i] * inputGain;
-    dry = chorus.Process(dry) * chorusMix + (1.f - chorusMix) * dry;
+    // Filter ##################################
     dry = filter.Process(dry);
 
+    // Delay ##################################
     float wet = delay_line.Read();
-    delay_line.Write((wet * delayFeedback) + dry);
-    delayout = wet * delayWetMix + dry * (1 - delayWetMix);
-    // if (feedbackOn) {
-    //   oscout *= follow.Process(delayout);
-    // }
-    out[0][i] = delayout;
-    out[1][i] = oscout;
+    delay_line.Write((wet * delay_feedback) + dry);
+    output = wet * delay_wet_mix + dry * (1.f - delay_wet_mix);
+    
+    // Compress ##################################
+    output = comp.Process(output);
+
+    out[0][i] = output;
+    out[1][i] = 0;
   }
 }
 
@@ -88,53 +82,42 @@ void setup() {
   DAISY.init(DAISY_SEED, AUDIO_SR_48K);
   auto sample_rate = DAISY.get_samplerate();
   
-  Serial.begin(9600);
+  // Serial.begin(9600);
 
   // INIT TOUCH SENSOR
-  touch.Init();
-  touch.SetOnTouch(OnTouch);
-  touch.SetOnRelease(OnRelease);
-
-  // INIT SWITCHES
-  pinMode(drone_switch, INPUT_PULLUP);
-  pinMode(switch_1_b, INPUT_PULLUP);
-  pinMode(switch_2_a, INPUT_PULLUP);
-  pinMode(follow_switch, INPUT_PULLUP);
+  // touch.Init();
+  // touch.SetOnTouch(OnTouch);
+  // touch.SetOnRelease(OnRelease);
 
   // initialize other modules here
-  // vox.Init(sample_rate);
   delay_line.Init();
-  chorus.Init(sample_rate);
+  
   filter.Init(sample_rate);
+  filter.SetRange(filter_low_freq, filter_high_freq);
+
+  comp.Init(sample_rate);
+  comp.SetRatio(compressor_ratio);
+  comp.SetAttack(compressor_attack);
+  comp.SetRelease(compressor_release);
+  comp.AutoMakeup(false);
 
   // BEGIN CALLBACK
   DAISY.begin(AudioCallback);
 }
 
 void loop() {
-  //PROCESS TOUCH SENSOR
-  touch.Process();
+  // touch.Process();
 
-  // auto newFeedbackOn = !digitalRead(follow_switch);
-  // if (!feedbackOn && newFeedbackOn) vox.Trigger(decay);
-  // feedbackOn = newFeedbackOn;
+  in_gain = fmap(input_fader.Process(), .2f, 10.f, Mapping::EXP);
   
-  // vox.SetDroning(feedbackOn || digitalRead(drone_switch));
-  // vox.SetFreq(fmap(freq_knob.Process(), 30.0, 5000, Mapping::LOG));
-  // decay = fmap(decay_knob.Process(), 0.01, 3.0);
-
-  inputGain = fmap(input_knob.Process(), 0.2, 10.0, Mapping::EXP);
-  delayWetMix = wet_knob.Process();
-  delay_line.SetDelay(fmap(delay_knob.Process(), 480, 96000));
-
-  auto chorus_val = chorus_fader.Process();
-  chorus.SetLfoFreq(chorus_val);
-  chorus.SetLfoDepth(1.f - chorus_val);
-  chorus.SetDelay(1.f - fmap(chorus_val, 0.1, 0.9));
-  chorusMix = chorus_mix_fader.Process();
+  delay_wet_mix = wet_knob.Process();
+  delay_line.SetDelay(fmap(time_knob.Process(), 480.f, 96000.f)); //10ms...2s
 
   filter.SetCutoff(cutoff_knob.Process());
   filter.SetReso(reso_knob.Process());
+
+  comp.SetThreshold(fmap(tresh_knob.Process(), 0.f, 80.f) - 80.f);
+  comp.SetMakeup(fmap(gain_fader.Process(), 0.f, 50.f));
 
   delay(4);
 }
