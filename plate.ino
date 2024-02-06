@@ -24,7 +24,7 @@ static AKnob reso_knob(A(S33));
 static AKnob delay_knob(A(S34));
 static AKnob wet_knob(A(S35));
 static AKnob chorus_fader(A(S36));
-static AKnob filter_fader(A(S37));
+static AKnob chorus_mix_fader(A(S37));
 
 static const int drone_switch = D(S07);
 static const int switch_1_b = D(S08);
@@ -56,6 +56,7 @@ float delayWetMix = 0.33; // 0...1
 ///////////////////// AUDIO CALLBACK //////////////////////////
 
 float inputGain = 1.f;
+float chorusMix = 1.f;
 bool feedbackOn = false;
 
 void AudioCallback(float **in, float **out, size_t size) {
@@ -66,7 +67,7 @@ void AudioCallback(float **in, float **out, size_t size) {
 
     // Delay ##################################
     float dry = in[0][i] * inputGain;
-    dry = chorus.Process(dry);
+    dry = chorus.Process(dry) * chorusMix + (1.f - chorusMix) * dry;
     dry = filter.Process(dry);
 
     float wet = delay_line.Read();
@@ -130,6 +131,7 @@ void loop() {
   chorus.SetLfoFreq(chorus_val);
   chorus.SetLfoDepth(1 - chorus_val);
   chorus.SetDelay(1.f - fmap(chorus_val, 0.1, 0.9));
+  chorusMix = chorus_mix_fader.Process();
 
   filter.SetCutoff(cutoff_knob.Process());
   filter.SetReso(reso_knob.Process());
