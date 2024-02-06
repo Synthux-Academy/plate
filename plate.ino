@@ -69,8 +69,8 @@ void AudioCallback(float **in, float **out, size_t size) {
     if (feedbackOn) {
       oscout *= follow.Process(delayout);
     }
-    out[0][i] = oscout;
-    out[1][i] = delayout;
+    out[0][i] = delayout;
+    out[1][i] = oscout;
   }
 }
 
